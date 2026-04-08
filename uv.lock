@@ -1,0 +1,20 @@
+version = 1
+revision = 3
+requires-python = ">=3.10"
+
+[[package]]
+name = "openenv-data_cleaning_env"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "numpy" },
+    { name = "openenv-core", extra = ["core"] },
+    { name = "pandas" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.24.0" },
+    { name = "openenv-core", extras = ["core"], specifier = ">=0.2.2" },
+    { name = "pandas", specifier = ">=2.0.0" },
+]
