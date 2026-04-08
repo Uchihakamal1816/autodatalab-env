@@ -1,0 +1,33 @@
+{
+  "domain": "ecommerce_expert",
+  "task_label": "Task 4 \u2014 Expert full pipeline",
+  "grade_columns": [
+    "OrderID",
+    "CustomerID",
+    "Product",
+    "Category",
+    "Price",
+    "Quantity",
+    "OrderDate",
+    "Revenue"
+  ],
+  "sort_rows": true,
+  "plot_weight": 0.25,
+  "expected_plots": [
+    {
+      "type": "scatter",
+      "x": "OrderDate",
+      "y": "Revenue"
+    },
+    {
+      "type": "bar",
+      "x": "Category",
+      "y": "Revenue"
+    },
+    {
+      "type": "bar",
+      "x": "Product",
+      "y": "Revenue"
+    }
+  ]
+}

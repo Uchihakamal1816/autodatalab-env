@@ -1,0 +1,10 @@
+{
+  "domain": "ecommerce_revenue_share",
+  "task_label": "Task 3 \u2014 Revenue share analysis",
+  "grade_columns": [
+    "Category",
+    "Revenue",
+    "RevenueShare"
+  ],
+  "sort_rows": true
+}

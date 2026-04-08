@@ -105,14 +105,10 @@ def _oracle_next_action(task: str, obs, DataCleaningAction):
             return DataCleaningAction(action_type="remove_duplicates")
         if not has_action("fill_missing"):
             return DataCleaningAction(action_type="fill_missing", column="Price", method="mean")
-        if not has_action("remove_outliers"):
-            return DataCleaningAction(action_type="remove_outliers", column="Price", z_threshold=2.5)
         if not has_action("derive_revenue"):
             return DataCleaningAction(action_type="derive_revenue")
-        if plot_count == 0:
-            return DataCleaningAction(action_type="plot", plot_type="scatter", x="OrderDate", y="Revenue")
-        if plot_count == 1:
-            return DataCleaningAction(action_type="plot", plot_type="bar", x="Category", y="Revenue")
+        if not has_action("compute_revenue_share"):
+            return DataCleaningAction(action_type="compute_revenue_share")
         return DataCleaningAction(action_type="submit")
 
     if task == "expert":
@@ -156,7 +152,7 @@ Rules:
 - Easy: remove_duplicates -> fill_missing(Price,mean) -> submit.
 - Medium: compute_metrics -> submit.
 - Medium_plus: compute_kpis -> submit.
-- Hard: remove_duplicates -> fill_missing(Price,mean) -> remove_outliers(Price,z=2.5) -> derive_revenue -> plot scatter(OrderDate,Revenue) -> plot bar(Category,Revenue) -> submit.
+- Hard: remove_duplicates -> fill_missing(Price,mean) -> derive_revenue -> compute_revenue_share -> submit. (Produces Category, Revenue, RevenueShare% table)
 - Expert: remove_duplicates -> fill_missing(Price,mean) -> remove_outliers(Price,z=2.5) -> derive_revenue -> validate_schema -> compute_kpis -> plot scatter(OrderDate,Revenue) -> plot bar(Category,Revenue) -> plot bar(Product,Revenue) -> submit.
 - Do not fill or drop identifier columns like OrderID or CustomerID.
 - data_quality_score in observation shows fraction of rows passing business rules — use it to guide your next action.

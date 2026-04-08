@@ -219,10 +219,11 @@ def _generate_report(sess: "Session") -> Optional[str]:
         except Exception:
             operations.append(str(raw))
 
-    # Get final table from env
+    # Get final table from env — full CSV for the report
     try:
         df_final = sess.env._df
-        preview   = df_final.head(15).fillna("—").to_dict(orient="records")
+        # Include all rows; report generator decides whether to truncate large tables
+        preview   = df_final.fillna("—").to_dict(orient="records")
         row_count = len(df_final)
         columns   = list(df_final.columns)
     except Exception:

@@ -1,0 +1,9 @@
+{
+  "domain": "ecommerce_metrics",
+  "task_label": "Task 2 \u2014 Business metrics",
+  "grade_columns": [
+    "Category",
+    "Revenue"
+  ],
+  "sort_rows": true
+}
