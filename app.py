@@ -736,6 +736,7 @@ if __name__ == "__main__":
     if hf_mode:
         # Mount Gradio UI on top of the OpenEnv FastAPI app so both work on port 7860
         import uvicorn
+        from fastapi.responses import JSONResponse
         from data_cleaning_env.models import DataCleaningAction, DataCleaningObservation
         from data_cleaning_env.server.data_cleaning_env_environment import DataCleaningEnvironment
         try:
@@ -744,6 +745,16 @@ if __name__ == "__main__":
                 DataCleaningEnvironment, DataCleaningAction, DataCleaningObservation,
                 env_name="data_cleaning_env",
             )
+            @openenv_fastapi.get("/", include_in_schema=False)
+            def _root_ok():
+                return JSONResponse(
+                    {
+                        "status": "ok",
+                        "message": "AutoDataLab is running",
+                        "ui": "/ui",
+                        "health": "/health",
+                    }
+                )
             # Mount Gradio at /ui; OpenEnv API stays at root (/, /reset, /step, /state, /health)
             combined_app = gr.mount_gradio_app(openenv_fastapi, demo, path="/ui", css=CSS)
             print("Running combined OpenEnv API + Gradio UI on port 7860")
