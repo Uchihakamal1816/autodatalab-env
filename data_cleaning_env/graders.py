@@ -131,6 +131,16 @@ def plot_coverage_score(
     return matched / len(expected)
 
 
+# Validator requires scores strictly inside (0, 1) — never exactly 0.0 or 1.0.
+_SCORE_MIN = 0.001
+_SCORE_MAX = 0.999
+
+
+def _clamp(score: float) -> float:
+    """Clamp to (_SCORE_MIN, _SCORE_MAX) — strictly inside open interval (0, 1)."""
+    return max(_SCORE_MIN, min(_SCORE_MAX, float(score)))
+
+
 def grade_task(
     pred: pd.DataFrame,
     gt: pd.DataFrame,
@@ -139,7 +149,7 @@ def grade_task(
     plot_history: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[float]:
     """
-    Combined score in [0, 1]: cleaning table vs GT + optional plot spec.
+    Combined score strictly in (0, 1): cleaning table vs GT + optional plot spec.
 
     Returns ``None`` when there is no ground-truth table (empty or missing file), so episodes
     still run but are not numerically graded.
@@ -158,7 +168,7 @@ def grade_task(
     )
     expected = metadata.get("expected_plots") or []
     if not expected:
-        return clean
+        return _clamp(clean)
     plot_weight = float(metadata.get("plot_weight", 0.2))
     plot_weight = min(max(plot_weight, 0.0), 1.0)
     clean_weight = 1.0 - plot_weight
@@ -172,9 +182,9 @@ def grade_task(
                 plot_action.get("y"),
                 expected,
             )
-        return clean_weight * clean + plot_weight * pm
+        return _clamp(clean_weight * clean + plot_weight * pm)
     if plot_action is None and not hist:
-        return clean_weight * clean
+        return _clamp(clean_weight * clean)
     pm = plot_match_score(
         plot_action.get("plot_type") if plot_action else None,
         plot_action.get("x") if plot_action else None,
@@ -183,4 +193,4 @@ def grade_task(
     )
     if hist:
         pm = max(pm, plot_coverage_score(hist, expected))
-    return clean_weight * clean + plot_weight * pm
+    return _clamp(clean_weight * clean + plot_weight * pm)
