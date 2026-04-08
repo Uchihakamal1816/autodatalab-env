@@ -1,0 +1,28 @@
+{
+  "domain": "ecommerce_insights",
+  "task_label": "Task 3 \u2014 Insight + visualization",
+  "grade_columns": [
+    "OrderID",
+    "CustomerID",
+    "Product",
+    "Category",
+    "Price",
+    "Quantity",
+    "OrderDate",
+    "Revenue"
+  ],
+  "sort_rows": true,
+  "plot_weight": 0.2,
+  "expected_plots": [
+    {
+      "type": "scatter",
+      "x": "OrderDate",
+      "y": "Revenue"
+    },
+    {
+      "type": "bar",
+      "x": "Category",
+      "y": "Revenue"
+    }
+  ]
+}

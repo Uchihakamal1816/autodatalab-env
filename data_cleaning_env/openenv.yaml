@@ -1,0 +1,37 @@
+spec_version: 1
+name: autodatalab_data_cleaning
+type: space
+runtime: fastapi
+app: server.app:app
+# Align with Dockerfile / HF Spaces default (override locally if needed)
+port: 7860
+
+description: >
+  E-commerce data analyst workflow: deduplicate order records, impute missing values,
+  remove outliers, derive Revenue, compute business KPIs, and declare charts.
+  Deterministic grading against analyst ground-truth CSV with dense reward shaping.
+
+tags:
+  - openenv
+  - data-cleaning
+  - ecommerce
+  - reinforcement-learning
+  - pandas
+
+tasks:
+  - id: easy
+    difficulty: easy
+    summary: >
+      Remove duplicate orders and impute missing Price with the column mean.
+      ExpiryDays may still surface as a warning, but it is not a required task transform.
+  - id: medium
+    difficulty: medium
+    summary: >
+      Pre-cleaned order data is given. Run compute_metrics to produce a
+      category-level Revenue table (Category, Revenue).
+  - id: hard
+    difficulty: hard
+    summary: >
+      Full pipeline: deduplicate, impute missing Price, derive Revenue (Price × Quantity),
+      then declare two plots —
+      Revenue vs OrderDate (scatter) and Category vs Revenue (bar).
