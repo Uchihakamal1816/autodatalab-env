@@ -1,9 +1,0 @@
-{
-  "domain": "ecommerce_kpis",
-  "task_label": "Task 2+ \u2014 Full business KPIs",
-  "grade_columns": [
-    "Metric",
-    "Value"
-  ],
-  "sort_rows": true
-}
