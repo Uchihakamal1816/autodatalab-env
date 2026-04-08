@@ -187,28 +187,28 @@ def _run_oracle_episode(task: str) -> float:
             if obs.done:
                 break
         score = float(obs.terminal_grader_score or 0.0)
-        score = max(0.001, min(0.999, float(score)))
-           success = score >= SUCCESS_SCORE_THRESHOLD
-           return score
-       except Exception as exc:
-           err = str(exc).replace("\n", " ")
-           step_no = max(steps_taken + 1, 1)
-           log_step(step=step_no, action="exception", reward=0.0, done=True, error=err)
-           return 0.001
-       finally:
-           try:
-               close_fn = getattr(env, "close", None)
-               if callable(close_fn):
-                   close_fn()
-           finally:
-               if "score" not in locals():
-                   score = 0.001
-               if "success" not in locals():
-                   success = False
-               log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+        score = max(0.001, min(0.999, score))
+        success = score >= SUCCESS_SCORE_THRESHOLD
+        return score
+    except Exception as exc:
+        err = str(exc).replace("\n", " ")
+        step_no = max(steps_taken + 1, 1)
+        log_step(step=step_no, action="exception", reward=0.0, done=True, error=err)
+        return 0.001
+    finally:
+        try:
+            close_fn = getattr(env, "close", None)
+            if callable(close_fn):
+                close_fn()
+        finally:
+            if "score" not in locals():
+                score = 0.001
+            if "success" not in locals():
+                success = False
+            log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
 
-   def _run_llm_episode(task: str) -> float:
+def _run_llm_episode(task: str) -> float:
     repo = Path(__file__).resolve().parent
     if str(repo) not in sys.path:
         sys.path.insert(0, str(repo))
