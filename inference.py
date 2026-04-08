@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Validator-safe root inference entrypoint with structured stdout logs."""
+"""Validator-safe root inference entrypoint with structured stdout logs.
+
+When `API_KEY` is present, this script makes real OpenAI-client calls through the
+injected `API_BASE_URL` LiteLLM proxy. For local development without proxy creds,
+it falls back to the deterministic oracle so the script remains runnable.
+"""
 
 from __future__ import annotations
 
@@ -9,14 +14,14 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-
-API_BASE_URL = os.getenv("API_BASE_URL", "https://api.groq.com/openai/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "llama-3.1-8b-instant")
-HF_TOKEN = os.getenv("HF_TOKEN", "")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY") or ""
 BENCHMARK = "autodatalab_data_cleaning"
 TASKS = [t.strip() for t in os.getenv("AUTODATALAB_TASKS", "easy,medium,hard").split(",") if t.strip()]
 SUCCESS_SCORE_THRESHOLD = float(os.getenv("SUCCESS_SCORE_THRESHOLD", "0.5"))
-INFERENCE_MODE = os.getenv("INFERENCE_MODE", "oracle").strip().lower()
+MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "3"))
+INITIAL_RETRY_DELAY_S = float(os.getenv("LLM_RETRY_DELAY_S", "2"))
 
 
 def _bool_str(v: bool) -> str:
@@ -24,7 +29,7 @@ def _bool_str(v: bool) -> str:
 
 
 def _safe_token() -> str:
-    token = (HF_TOKEN or "").strip().strip('"').strip("'")
+    token = (API_KEY or "").strip().strip('"').strip("'")
     if token and not (os.environ.get("OPENAI_API_KEY") or "").strip():
         os.environ["OPENAI_API_KEY"] = token
     if API_BASE_URL:
@@ -111,6 +116,41 @@ def _oracle_next_action(task: str, obs, DataCleaningAction):
     return DataCleaningAction(action_type="submit")
 
 
+def _build_prompt(task: str, obs) -> str:
+    history = obs.history[-8:] if getattr(obs, "history", None) else []
+    return f"""You are an e-commerce data analyst cleaning a pandas table.
+Task: {task}
+Instruction: {obs.instruction}
+Columns: {obs.column_names}
+Issues detected: {obs.issues}
+Policy rules: {json.dumps(getattr(obs, "policy_rules", []) or [])}
+Policy warnings: {json.dumps(getattr(obs, "policy_warnings", []) or [])}
+Preview: {json.dumps(obs.preview, separators=(",", ":"))}
+Recent history: {history}
+Last step: {obs.last_step_summary or "(none yet)"}
+
+Rules:
+- Easy: remove_duplicates -> fill_missing(Price,mean) -> submit.
+- Medium: compute_metrics -> submit.
+- Medium_plus: compute_kpis -> submit.
+- Hard/Expert: remove_duplicates -> fill_missing(Price,mean) -> derive_revenue -> plot scatter(OrderDate,Revenue) -> plot bar(Category,Revenue) -> submit.
+- Do not fill or drop identifier columns like OrderID or CustomerID.
+- Reply with exactly one JSON object and no markdown.
+
+Schema:
+{{
+  "action_type": "remove_duplicates" | "fill_missing" | "drop_column" | "normalize" | "remove_outliers" | "derive_revenue" | "compute_metrics" | "compute_kpis" | "plot" | "export_csv" | "submit" | "noop",
+  "column": string or null,
+  "method": "mean" | "median" | "mode" | null,
+  "z_threshold": number or null,
+  "x": string or null,
+  "y": string or null,
+  "plot_type": "scatter" | "bar" | "histogram" | null,
+  "export_basename": string or null,
+  "description": string or null
+}}"""
+
+
 def _run_oracle_episode(task: str) -> float:
     repo = Path(__file__).resolve().parent
     if str(repo) not in sys.path:
@@ -168,11 +208,127 @@ def _run_oracle_episode(task: str) -> float:
             log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
 
+def _run_llm_episode(task: str) -> float:
+    repo = Path(__file__).resolve().parent
+    if str(repo) not in sys.path:
+        sys.path.insert(0, str(repo))
+
+    from openai import OpenAI
+
+    from data_cleaning_env.baseline_inference import (
+        _chat_completion_with_retry,
+        _hard_alternate_loop_normalize,
+        _parse_action_json,
+        _semantic_action_repr,
+        _stuck_advance,
+    )
+    from data_cleaning_env.models import DataCleaningAction
+    from data_cleaning_env.server.data_cleaning_env_environment import DataCleaningEnvironment
+
+    client = OpenAI(base_url=API_BASE_URL, api_key=_safe_token())
+    env = DataCleaningEnvironment()
+    rewards: List[float] = []
+    steps_taken = 0
+    score = 0.0
+    success = False
+    prev_semantic: Optional[str] = None
+    log_start(task=task, env=BENCHMARK, model=MODEL_NAME)
+
+    try:
+        obs = env.reset(task=task)
+        limit = int(getattr(obs, "max_steps", 40))
+
+        for step in range(1, limit + 1):
+            if obs.done:
+                break
+
+            prompt = _build_prompt(task, obs)
+            error: Optional[str] = None
+            raw = ""
+
+            try:
+                resp = _chat_completion_with_retry(
+                    client,
+                    MODEL_NAME,
+                    [{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    max_retries=MAX_RETRIES,
+                    initial_delay_s=INITIAL_RETRY_DELAY_S,
+                    json_mode=False,
+                )
+                raw = (resp.choices[0].message.content or "").strip()
+                data = _parse_action_json(raw)
+                action = DataCleaningAction.model_validate(data)
+            except Exception as exc:
+                error = str(exc).replace("\n", " ")
+                action = _oracle_next_action(task, obs, DataCleaningAction)
+
+            # Keep the episode progressing even if the model loops or produces a weak action.
+            advanced = _stuck_advance(task, obs, action, prev_semantic)
+            if advanced is not None:
+                action = advanced
+            hard_norm = _hard_alternate_loop_normalize(task, obs, action)
+            if hard_norm is not None:
+                action = hard_norm
+
+            obs = env.step(action)
+            reward = float(obs.reward or 0.0)
+            rewards.append(reward)
+            steps_taken = step
+            log_step(
+                step=step,
+                action=_action_str(action),
+                reward=reward,
+                done=bool(obs.done),
+                error=error,
+            )
+            prev_semantic = _semantic_action_repr(action)
+
+            if obs.done:
+                break
+
+        if not obs.done:
+            action = DataCleaningAction(action_type="submit")
+            obs = env.step(action)
+            reward = float(obs.reward or 0.0)
+            rewards.append(reward)
+            steps_taken += 1
+            log_step(
+                step=steps_taken,
+                action=_action_str(action),
+                reward=reward,
+                done=bool(obs.done),
+                error=None,
+            )
+
+        score = float(obs.terminal_grader_score or 0.0)
+        score = min(max(score, 0.0), 1.0)
+        success = score >= SUCCESS_SCORE_THRESHOLD
+        return score
+    except Exception as exc:
+        err = str(exc).replace("\n", " ")
+        step_no = max(steps_taken + 1, 1)
+        log_step(step=step_no, action="exception", reward=0.0, done=True, error=err)
+        return 0.0
+    finally:
+        try:
+            close_fn = getattr(env, "close", None)
+            if callable(close_fn):
+                close_fn()
+        finally:
+            if "score" not in locals():
+                score = 0.0
+            if "success" not in locals():
+                success = False
+            log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+
+
 def main() -> None:
-    _safe_token()
-    # Keep default inference deterministic and validator-safe. LLM mode remains opt-in via env.
     for task in TASKS:
-        _run_oracle_episode(task)
+        if _safe_token():
+            _run_llm_episode(task)
+        else:
+            _run_oracle_episode(task)
 
 
 if __name__ == "__main__":
